@@ -5,7 +5,7 @@ import sqlite3
 import webbrowser
 import asyncio
 import dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import KeyboardButton, Update, ReplyKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, CallbackQueryHandler
 
 env = dotenv.dotenv_values()
@@ -57,10 +57,9 @@ async def start(update: Update, context: CallbackContext):
     create_player(user.id, user.username)
 
     # Показать кнопку для запуска игры
-    keyboard = [[InlineKeyboardButton("Играть!", web_app=WebAppInfo(url="https://chuckis.github.io/flyingpoop/"))]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard = [[KeyboardButton("Играть!", web_app=WebAppInfo(url="https://chuckis.github.io/flyingpoop/"))]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text('Нажми кнопку для начала игры!', reply_markup=reply_markup)
-
     
 
 # Запуск игры через веб-вью
