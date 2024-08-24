@@ -1,12 +1,21 @@
 # bot.py
 
-import os
 import sqlite3
-import webbrowser
-import asyncio
 import dotenv
-from telegram import KeyboardButton, Update, ReplyKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, CallbackQueryHandler
+import json
+import logging
+
+from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+# set higher logging level for httpx to avoid all GET and POST requests being logged
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 env = dotenv.dotenv_values()
 
@@ -49,11 +58,10 @@ def update_highscore(user_id, new_score):
     conn.close()
 
 # Команда /start
-async def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     await update.message.reply_text(f'Привет, {user.first_name}! Давай начнем игру!')
 
-    # Создаем пользователя в базе данных
     create_player(user.id, user.username)
 
     # Показать кнопку для запуска игры
@@ -61,53 +69,36 @@ async def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text('Нажми кнопку для начала игры!', reply_markup=reply_markup)
     
-
-# Запуск игры через веб-вью
-async def button_handler(update: Update, context: CallbackContext):
-    query = update.callback_query
-    user_id = query.from_user.id
-    
-    # Запускаем веб-вью с игрой
-    webbrowser.open(os.getenv('GAME_URL'))
-
-    await query.answer()
-
-# Команда для обновления рекорда
-async def set_highscore(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    score = int(context.args[0])
-    
-    update_highscore(user.id, score)
-    await update.message.reply_text(f'Твой новый рекорд: {score} очков!')
-
-# Обработка результата игры
-async def handle_game_result(update: Update, context: CallbackContext):
-    query = update.callback_query
+# Handle incoming WebAppData
+async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Print the received data and remove the button."""
+    # Here we use `json.loads`, since the WebApp sends the data JSON serialized string
     user = update.effective_user
-
-    # Обрабатываем результат
-    game_result = query.data  # Получаем данные от WebApp
-    await query.answer()  # Закрываем запрос WebApp
-    await update.message.reply_text(f"Ты набрал {game_result} очков!")
-    
+    data = json.loads(update.effective_message.web_app_data.data)
+    score = data.get('score')
+    await update.message.reply_html(
+        text=(
+            f"You win today with {score} score!"
+        ),
+        reply_markup=ReplyKeyboardRemove(),
+    )  
     # Обновляем рекорд в базе данных
-    update_highscore(user.id, int(game_result))
-
+    update_highscore(user.id, int(score))
+ 
 # Основная функция запуска бота
 def main():
 
     # Инициализация базы данных
     init_db()
     
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Регистрируем команды
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("set_highscore", set_highscore))
-    application.add_handler(CallbackQueryHandler(handle_game_result))
+    application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
 
     # Запускаем бота
     application.run_polling()
 
 if __name__ == '__main__':
-    main() # Запуск асинхронной функции через asyncio.run
+    main() 
